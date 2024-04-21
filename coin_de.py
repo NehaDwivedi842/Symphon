@@ -437,3 +437,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+fs.inotify.max_user_watches=524288
