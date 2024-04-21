@@ -199,6 +199,7 @@
 #     main()
 
 #########################################
+import cv2
 import numpy as np
 from typing import List
 import imutils
@@ -206,7 +207,6 @@ from skimage import io
 import streamlit as st
 from ultralytics import YOLO
 import math
-import cv2
 
 # Function to show array of images (intermediate results)
 def show_images(images: List, window_title: str = "image"):
@@ -233,21 +233,19 @@ def capture_image():
     
     while True:
         ret, frame = cap.read()
-        cv2.imshow("Capture Image", frame)  # Use cv2.imshow() instead of show_images()
+        cv2.imshow("Capture Image", frame)
         
         # Press 's' to capture the image
         if cv2.waitKey(1) & 0xFF == ord('s'):
+            cv2.imwrite("captured_image.jpg", frame)
             print("Image captured successfully")
             break
     
-    cap.release()  # Release the camera
-    cv2.destroyAllWindows()  # Close all OpenCV windows
-    return frame
-
-
+    cap.release()
+    cv2.destroyAllWindows()
 
 # Function to detect objects, annotate image, and calculate tonnage
-def detect_objects_and_annotate(frame, num_cavities, tons_per_inch_sq):
+def detect_objects_and_annotate(image, num_cavities, tons_per_inch_sq):
     # Load YOLOv5 model
     model = YOLO("yolov8m-seg-custom.pt")
 
@@ -255,7 +253,7 @@ def detect_objects_and_annotate(frame, num_cavities, tons_per_inch_sq):
     pixel_per_cm = None
 
     # Detect objects using YOLOv5
-    results = model.predict(source=frame, show=False)
+    results = model.predict(source=image, show=False)
 
     # Check if results is not empty
     if results:
@@ -272,7 +270,7 @@ def detect_objects_and_annotate(frame, num_cavities, tons_per_inch_sq):
                 center_x = int((x1 + x2) / 2)
                 center_y = int((y1 + y2) / 2)
                 radius = max(abs(x2 - x1), abs(y2 - y1)) // 2
-                cv2.circle(frame, (center_x, center_y), radius, (0, 255, 0), 2)  # Draw circle
+                cv2.circle(image, (center_x, center_y), radius, (0, 255, 0), 2)  # Draw circle
                 
                 # Calculate dimensions of the reference object (coin)
                 ref_w, ref_h = abs(x2 - x1), abs(y2 - y1)
@@ -286,14 +284,14 @@ def detect_objects_and_annotate(frame, num_cavities, tons_per_inch_sq):
 
                 # Draw reference object size message above the detected object
                 ref_text = " Size=0.955"
-                cv2.putText(frame, ref_text, (center_x - 150, center_y - 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
+                cv2.putText(image, ref_text, (center_x - 150, center_y - 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
                 
         if pixel_per_cm is None:
             st.error("No Reference object detected in the image. Please recapture.")
             return None  # Skip further processing for this image if no objects are detected
 
     # Find contours
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         blur = cv2.GaussianBlur(gray, (9, 9), 0)
         edged = cv2.Canny(blur, 50, 100)
         edged = cv2.dilate(edged, None, iterations=1)
@@ -326,7 +324,7 @@ def detect_objects_and_annotate(frame, num_cavities, tons_per_inch_sq):
         # Draw contour of the object with the largest area
         if largest_contour is not None:
             # Draw contour of the object
-            cv2.drawContours(frame, [largest_contour], -1, (0, 0, 255), 2)  # Draw contour line instead of bounding box
+            cv2.drawContours(image, [largest_contour], -1, (0, 0, 255), 2)  # Draw contour line instead of bounding box
             
             # Calculate dimensions and area of the object
             area_cm2 = cv2.contourArea(largest_contour) / (pixel_per_cm ** 2)
@@ -342,9 +340,14 @@ def detect_objects_and_annotate(frame, num_cavities, tons_per_inch_sq):
                 
                 # If aspect ratio is less than 1, consider it as a long and narrow shape (e.g., rectangle)
                 if aspect_ratio < 1:
+                    # Calculate the perimeter of the contour
+                    perimeter = cv2.arcLength(largest_contour, True)
+    
+                    # Estimate the diameter of a circle with the same perimeter
+                    diameter = perimeter / math.pi
+    
                     # Calculate the area of the circle as an approximation of the irregular shape's area
-                    area_cm2 = np.pi * ((width_cm / 2) ** 2)
-                    
+                    area_cm2 = (diameter / 2) ** 2 * math.pi
 
             # Calculate text positions
             text_x = int(x - 100)
@@ -359,17 +362,16 @@ def detect_objects_and_annotate(frame, num_cavities, tons_per_inch_sq):
             tonnage = calculate_tonnage(area_in2, num_cavities, tons_per_inch_sq)
 
             # Draw text annotations with dimensions in inches and tonnage
-            cv2.putText(frame, "Length: {:.1f}in".format(width_in), (text_x, text_y + 90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
-            cv2.putText(frame, "Breadth: {:.1f}in".format(height_in), (text_x, text_y + 120), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
-            cv2.putText(frame, "Area: {:.1f}in^2".format(area_in2), (text_x, text_y + 150), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
-            cv2.putText(frame, "Tonnage: {:.2f}".format(tonnage), (text_x, text_y + 180), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
+            cv2.putText(image, "Length: {:.1f}in".format(width_in), (text_x, text_y + 90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
+            cv2.putText(image, "Breadth: {:.1f}in".format(height_in), (text_x, text_y + 120), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
+            cv2.putText(image, "Area: {:.1f}in^2".format(area_in2), (text_x, text_y + 150), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
+            cv2.putText(image, "Tonnage: {:.2f}".format(tonnage), (text_x, text_y + 180), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
 
     # Display the size above the image
-    cv2.putText(frame, "Coin is the reference Object", (20, 35), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 1), 2)
-    st.write(f" Length: {height_in:.1f}in, Breadth: {width_in:.1f}")
-    st.success(f"Projected Area: {area_in2:.1f}in^2, Tonnage: {tonnage:.2f}tons")
+    cv2.putText(image, "Coin is the reference Object", (20, 35), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 1), 2)
+    st.success(f" Length: {height_in:.1f}in, Breadth: {width_in:.1f}in, Projected Area: {area_in2:.1f}in^2, Tonnage: {tonnage:.2f}")
 
-    return frame
+    return image
 
 # Function to calculate tonnage based on area, number of cavities, and tons per inch square
 def calculate_tonnage(area_in2, num_cavities, tons_per_inch_sq):
@@ -387,8 +389,8 @@ def main():
         if uploaded_file is not None:
             image = io.imread(uploaded_file)
             image_name = uploaded_file.name  # Get the name of the uploaded file
-            num_cavities = st.number_input("Number of Cavities")
-            tons_per_inch_sq = st.number_input("Tons per Inch Square")
+            num_cavities = st.number_input("Number of Cavities", value=1)
+            tons_per_inch_sq = st.number_input("Tons per Inch Square", value=1.0)
             if st.button("Check Dimensions"):
                 # Display the captured image
                 st.image(image, caption="Uploaded Image", use_column_width=True)
@@ -401,14 +403,17 @@ def main():
         st.write("Press the button below to capture an image:")
 
         # Take user inputs for number of cavities and tons per inch square
-        num_cavities = st.number_input("Number of Cavities")
-        tons_per_inch_sq = st.number_input("Tons per Inch Square")
+        num_cavities = st.number_input("Number of Cavities", value=1)
+        tons_per_inch_sq = st.number_input("Tons per Inch Square", value=1.0)
 
         if st.button("Capture Image and Calculate Tonnage"):
-            frame = capture_image()
+            capture_image()
+            image_path = "captured_image.jpg"  # Define image path after capture
+            image = cv2.imread(image_path)
+
         
             # Perform object detection and annotation
-            annotated_image = detect_objects_and_annotate(frame, num_cavities, tons_per_inch_sq)
+            annotated_image = detect_objects_and_annotate(image, num_cavities, tons_per_inch_sq)
 
             if annotated_image is not None:
                 # Display the annotated image with detected objects
@@ -424,5 +429,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
