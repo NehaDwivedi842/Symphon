@@ -199,7 +199,6 @@
 #     main()
 
 #########################################
-import cv2
 import numpy as np
 from typing import List
 import imutils
@@ -207,6 +206,7 @@ from skimage import io
 import streamlit as st
 from ultralytics import YOLO
 import math
+import cv2
 
 # Function to show array of images (intermediate results)
 def show_images(images: List, window_title: str = "image"):
