@@ -231,22 +231,16 @@ def capture_image():
     cap = cv2.VideoCapture(0)  # Use default camera (index 0)
     if not cap.isOpened():
         st.error("Error: Unable to access camera.")
-        return
+        return None
 
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            st.error("Error: Failed to capture frame.")
-            break
-
-        cv2.imshow("Capture Image", frame)
-        key = cv2.waitKey(1)
-        if key & 0xFF == ord('s'):  # Press 's' to capture
-            cv2.imwrite("captured_image.jpg", frame)  # Save captured image
-            break
+    ret, frame = cap.read()
+    if not ret:
+        st.error("Error: Failed to capture frame.")
+        return None
 
     cap.release()
-    cv2.destroyAllWindows()
+    return frame
+
 
 # Function to detect objects, annotate image, and calculate tonnage
 def detect_objects_and_annotate(image, num_cavities, tons_per_inch_sq):
@@ -409,27 +403,22 @@ def main():
         # Take user inputs for number of cavities and tons per inch square
         num_cavities = st.number_input("Number of Cavities", value=1)
         tons_per_inch_sq = st.number_input("Tons per Inch Square", value=1.0)
+        if choice == "Capture from Camera":
+            st.write("Press the button below to capture an image:")
+            if st.button("Capture Image"):
+                captured_frame = capture_image()
+                if captured_frame is not None:
+                    st.image(captured_frame, caption="Captured Image", use_column_width=True)
+                    annotated_image = detect_objects_and_annotate(captured_frame)
+                    if annotated_image is not None:
+                        st.image(annotated_image, caption="Annotated Image", use_column_width=True)
+                    else:
+                        st.error("Cannot annotate the image. Please try again.")
 
-        if st.button("Capture Image and Calculate Tonnage"):
-            capture_image()
-            image_path = "captured_image.jpg"  # Define image path after capture
-            image = cv2.imread(image_path)
 
         
-            # Perform object detection and annotation
-            annotated_image = detect_objects_and_annotate(image, num_cavities, tons_per_inch_sq)
 
-            if annotated_image is not None:
-                # Display the annotated image with detected objects
-                st.image(annotated_image, caption="Annotated Image", use_column_width=True)
-
-                # Calculate tonnage based on user inputs
-                total_tonnage = num_cavities * tons_per_inch_sq
-                st.write(f"Total Tonnage: {total_tonnage} tons")
-
-            else:
-                st.error("Cannot annotate the image. Please try again.")
-
+        
 
 if __name__ == "__main__":
     main()
