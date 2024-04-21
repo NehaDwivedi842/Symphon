@@ -228,19 +228,23 @@ def show_images(images: List, window_title: str = "image"):
     cv2.destroyAllWindows()
 
 def capture_image():
-    # Capture image from live camera
-    cap = cv2.VideoCapture(0)  # 0 for default camera, you may need to change this value depending on your setup
-    
+    cap = cv2.VideoCapture(0)  # Use default camera (index 0)
+    if not cap.isOpened():
+        st.error("Error: Unable to access camera.")
+        return
+
     while True:
         ret, frame = cap.read()
-        cv2.imshow("Capture Image", frame)
-        
-        # Press 's' to capture the image
-        if cv2.waitKey(1) & 0xFF == ord('s'):
-            cv2.imwrite("captured_image.jpg", frame)
-            print("Image captured successfully")
+        if not ret:
+            st.error("Error: Failed to capture frame.")
             break
-    
+
+        cv2.imshow("Capture Image", frame)
+        key = cv2.waitKey(1)
+        if key & 0xFF == ord('s'):  # Press 's' to capture
+            cv2.imwrite("captured_image.jpg", frame)  # Save captured image
+            break
+
     cap.release()
     cv2.destroyAllWindows()
 
