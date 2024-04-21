@@ -228,29 +228,35 @@ def show_images(images: List, window_title: str = "image"):
     cv2.destroyAllWindows()
 
 def capture_image():
-    # Try to open the default camera (index 0) without specifying the index
-    cap = cv2.VideoCapture(0, cv2.CAP_ANY)
+    # Request camera permission
+    camera = cv2.VideoCapture(0, cv2.CAP_DSHOW)  # Use CAP_DSHOW to avoid potential backend issues on Windows
     
-    # Check if the camera is opened successfully
-    if not cap.isOpened():
-        # If the camera couldn't be opened, display an error message
-        print("Error: Unable to open camera.")
+    if not camera.isOpened():
+        print("Error: Could not access the camera.")
         return None
     
-    # Capture frame from the camera
-    ret, frame = cap.read()
+    # Continuously capture frames until 's' is pressed
+    while True:
+        ret, frame = camera.read()
+        
+        # Check if frame is valid
+        if not ret:
+            print("Error: Failed to retrieve frame from camera.")
+            break
+        
+        # Display the frame
+        cv2.imshow("Capture Image", frame)
+        
+        # Press 's' to capture the image
+        if cv2.waitKey(1) & 0xFF == ord('s'):
+            print("Image captured successfully")
+            break
     
     # Release the camera
-    cap.release()
-    
-    # Check if the frame was captured successfully
-    if not ret:
-        # If the frame couldn't be captured, display an error message
-        print("Error: Unable to capture frame.")
-        return None
+    camera.release()
+    cv2.destroyAllWindows()
     
     return frame
-
 
 
 # Function to detect objects, annotate image, and calculate tonnage
