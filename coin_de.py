@@ -5,46 +5,22 @@ import imutils
 from skimage import io
 import streamlit as st
 from ultralytics import YOLO
-import math
+from streamlit_webrtc import VideoTransformerBase, webrtc_streamer
 
-# Function to show array of images (intermediate results)
-def show_images(images: List, window_title: str = "image"):
-    """
-    Utility function to display a list of images in separate windows using OpenCV.
+# Custom video transformer class
+class FrameCaptureTransformer(VideoTransformerBase):
+    def transform(self, frame):
+        # Convert the frame to BGR format
+        bgr_frame = frame.to_ndarray(format="bgr24")
 
-    Args:
-        images (list): A list of images to be displayed.
-        window_title (str): The title of the window in which the images will be displayed. Default is "image".
+        # Process the frame (e.g., object detection, annotation)
+        processed_frame = detect_objects_and_annotate(bgr_frame)
 
-    Returns:
-        None. The function only displays the images in separate windows.
-    """
-    for i, img in enumerate(images):
-        cv2.namedWindow(f"{window_title}_{i}", cv2.WINDOW_NORMAL)
-        cv2.imshow(f"{window_title}_{i}", img)
-        cv2.resizeWindow(f"{window_title}_{i}", 800, 800)  # Resize window
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
-
-def capture_image():
-    # Use OpenCV to access the camera
-    cap = cv2.VideoCapture(0)  # Use default camera (index 0)
-    if not cap.isOpened():
-        st.error("Error: Unable to access camera.")
-        return None
-
-    ret, frame = cap.read()
-    if not ret:
-        st.error("Error: Failed to capture frame.")
-        return None
-
-    cap.release()
-    return frame
-
-
+        # Return the processed frame
+        return processed_frame
 
 # Function to detect objects, annotate image, and calculate tonnage
-def detect_objects_and_annotate(image, num_cavities, tons_per_inch_sq):
+def detect_objects_and_annotate(image):
     # Load YOLOv5 model
     model = YOLO("yolov8m-seg-custom.pt")
 
@@ -87,7 +63,7 @@ def detect_objects_and_annotate(image, num_cavities, tons_per_inch_sq):
                 
         if pixel_per_cm is None:
             st.error("No Reference object detected in the image. Please recapture.")
-            return None  # Skip further processing for this image if no objects are detected
+            return image  # Skip further processing for this image if no objects are detected
 
     # Find contours
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -104,7 +80,7 @@ def detect_objects_and_annotate(image, num_cavities, tons_per_inch_sq):
             if cv2.contourArea(cnt) > 50:
                 rect = cv2.minAreaRect(cnt)
                 box = cv2.boxPoints(rect)
-                box = np.int0(box)
+                box = np.intp(box)
                 
                 # Check if the contour falls within any bounding box of objects detected by YOLO
                 contour_in_yolo_object = False
@@ -139,15 +115,8 @@ def detect_objects_and_annotate(image, num_cavities, tons_per_inch_sq):
                 
                 # If aspect ratio is less than 1, consider it as a long and narrow shape (e.g., rectangle)
                 if aspect_ratio < 1:
-                    # Calculate the perimeter of the contour
-                    perimeter = cv2.arcLength(largest_contour, True)
-    
-                    # Estimate the diameter of a circle with the same perimeter
-                    diameter = perimeter / math.pi
-    
-                    # Calculate the area of the circle as an approximation of the irregular shape's area
-                    area_cm2 = (diameter / 2) ** 2 * math.pi
-
+                    area_cm2 = np.pi * ((width_cm / 2) ** 2)
+                    
             # Calculate text positions
             text_x = int(x - 100)
             text_y = int(y - 20)
@@ -157,26 +126,16 @@ def detect_objects_and_annotate(image, num_cavities, tons_per_inch_sq):
             height_in = height_cm / 2.54
             area_in2 = area_cm2 / 2.54
 
-            # Calculate tonnage
-            tonnage = calculate_tonnage(area_in2, num_cavities, tons_per_inch_sq)
-
-            # Draw text annotations with dimensions in inches and tonnage
+            # Draw text annotations with dimensions in inches
             cv2.putText(image, "Length: {:.1f}in".format(width_in), (text_x, text_y + 90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
             cv2.putText(image, "Breadth: {:.1f}in".format(height_in), (text_x, text_y + 120), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
             cv2.putText(image, "Area: {:.1f}in^2".format(area_in2), (text_x, text_y + 150), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
-            cv2.putText(image, "Tonnage: {:.2f}".format(tonnage), (text_x, text_y + 180), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
 
     # Display the size above the image
     cv2.putText(image, "Coin is the reference Object", (20, 35), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 1), 2)
-    st.success(f" Length: {height_in:.1f}in, Breadth: {width_in:.1f}in, Projected Area: {area_in2:.1f}in^2, Tonnage: {tonnage:.2f}")
+    st.success(f" Length: {height_in:.1f}in, Breadth: {width_in:.1f}in, Projected Area: {area_in2:.1f}in^2")
 
     return image
-
-# Function to calculate tonnage based on area, number of cavities, and tons per inch square
-def calculate_tonnage(area_in2, num_cavities, tons_per_inch_sq):
-    # Implement your tonnage calculation logic here
-    tonnage = area_in2 * num_cavities * tons_per_inch_sq
-    return tonnage
 
 # Streamlit app
 def main():
@@ -188,12 +147,12 @@ def main():
         if uploaded_file is not None:
             image = io.imread(uploaded_file)
             image_name = uploaded_file.name  # Get the name of the uploaded file
-            num_cavities = st.number_input("Number of Cavities", value=1)
-            tons_per_inch_sq = st.number_input("Tons per Inch Square", value=1.0)
+            num_cavities = st.number_input("Number of Cavities")
+            tons_per_inch_sq = st.number_input("Tons per Inch Square")
             if st.button("Check Dimensions"):
                 # Display the captured image
                 st.image(image, caption="Uploaded Image", use_column_width=True)
-                annotated_image = detect_objects_and_annotate(image, num_cavities, tons_per_inch_sq)
+                annotated_image = detect_objects_and_annotate(image)
                 if annotated_image is not None:
                     st.image(annotated_image, caption="Annotated Image", use_column_width=True)
                 else:
@@ -201,20 +160,10 @@ def main():
     else:
         st.write("Press the button below to capture an image:")
 
-        # Take user inputs for number of cavities and tons per inch square
-        num_cavities = st.number_input("Number of Cavities", value=1)
-        tons_per_inch_sq = st.number_input("Tons per Inch Square", value=1.0)
-        if choice == "Capture from Camera":
-            st.write("Press the button below to capture an image:")
-            if st.button("Capture Image"):
-                captured_frame = capture_image()
-                if captured_frame is not None:
-                    st.image(captured_frame, caption="Captured Image", use_column_width=True)
-                    annotated_image = detect_objects_and_annotate(captured_frame, num_cavities, tons_per_inch_sq)
-                    if annotated_image is not None:
-                        st.image(annotated_image, caption="Annotated Image", use_column_width=True)
-                    else:
-                        st.error("Cannot annotate the image. Please try again.")
+        # Use WebRTC to capture video from the camera
+        webrtc_streamer(key="example", video_transformer_factory=FrameCaptureTransformer)
+
 
 if __name__ == "__main__":
     main()
+
