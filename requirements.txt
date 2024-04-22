@@ -5,3 +5,4 @@ scikit-image
 streamlit
 ultralytics
 dill
+streamlit-webrtc
