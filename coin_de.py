@@ -175,7 +175,6 @@ def main():
                     st.error("Cannot Calculate Dimension and Tonnage Without Coin")
     else:
         st.write("Press the button below to capture an image:")
-        if st.button("Capture Image"):
             st.write("Capturing image...")
             # Use WebRTC to capture video from the camera
             webrtc_streamer(key="example", video_transformer_factory=FrameCaptureTransformer)
