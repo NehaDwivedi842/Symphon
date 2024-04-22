@@ -7,15 +7,15 @@ class VideoTransformer(VideoTransformerBase):
         return frame
 
 def main():
-    st.title("Camera Image Capture")
-    st.write("Click the button below to capture an image from your camera:")
+    st.title("Live Image Capture")
+    st.write("This app displays a live camera stream. Click the button below to capture an image.")
 
-    webrtc_ctx = webrtc_streamer(key="example", video_transformer_factory=VideoTransformer)
+    webrtc_ctx = webrtc_streamer(key="example", video_processor_factory=VideoTransformer)
 
-    if webrtc_ctx.video_transformer:
+    if webrtc_ctx.video_processor:
         if st.button("Capture Image"):
             # Capture the current frame from the camera stream
-            captured_frame = webrtc_ctx.video_transformer.frame
+            captured_frame = webrtc_ctx.video_processor.frame
             if captured_frame is not None:
                 st.write("Image captured successfully!")
                 st.image(captured_frame.to_ndarray(format="rgb24"), channels="RGB", use_column_width=True)
